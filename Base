@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Custom 6‑Char Cipher — Demo</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;margin:18px;background:#f7f8fb;color:#111}
+    .card{background:white;border-radius:12px;box-shadow:0 6px 20px rgba(20,30,60,0.08);padding:18px;max-width:980px;margin:12px auto}
+    h1{font-size:20px;margin:0 0 8px}
+    p.lead{margin:0 0 14px;color:#444}
+    label{display:block;font-size:13px;margin-top:10px}
+    input[type=text], textarea, select{width:100%;padding:10px;border-radius:8px;border:1px solid #e3e6ee;font-size:14px}
+    .row{display:flex;gap:10px}
+    .col{flex:1}
+    button{padding:10px 12px;border-radius:8px;border:0;background:#6b46c1;color:white;font-weight:600;cursor:pointer}
+    button.secondary{background:#2d3748}
+    pre{background:#0f1724;color:#f8fafc;padding:10px;border-radius:8px;overflow:auto}
+    .muted{font-size:12px;color:#666;margin-top:6px}
+    .inline{display:inline-block}
+    .small{font-size:12px}
+    footer{max-width:980px;margin:10px auto;text-align:center;color:#666;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Custom 6‑Character Cipher — Web Demo</h1>
+    <p class="lead">This page implements the same reversible educational cipher from the Python demo. <strong>Not secure</strong> — for learning, puzzles, or games only.</p>
+
+    <label>Key (exactly 6 characters)</label>
+    <input id="key" type="text" value="@A3#z!" maxlength="6" />
+    <div class="muted">Each character controls part of the transform (XOR, rotation, offset, reverse flag, checksum seed, permutation seed).</div>
+
+    <label>Plaintext</label>
+    <textarea id="plaintext" rows="4">Hello Julie! This is my secret message :)</textarea>
+
+    <div style="margin-top:12px" class="row">
+      <div class="col">
+        <button id="encryptBtn">Encrypt →</button>
+      </div>
+      <div class="col">
+        <button id="decryptBtn" class="secondary">← Decrypt</button>
+      </div>
+    </div>
+
+    <label>Cipher (hex)</label>
+    <textarea id="ciphertext" rows="4"></textarea>
+    <div style="margin-top:8px" class="row">
+      <div style="flex:0 0 140px"><button id="copyCipher">Copy cipher</button></div>
+      <div style="flex:0 0 140px"><button id="clearAll" class="secondary">Clear</button></div>
+    </div>
+
+    <hr style="margin:18px 0" />
+
+    <details open>
+      <summary style="cursor:pointer">How the algorithm maps the 6 key chars</summary>
+      <div style="margin-top:8px;font-size:13px;color:#444">
+        <ol>
+          <li><strong>key[0]</strong>: XOR byte applied to every byte.</li>
+          <li><strong>key[1]</strong>: rotation amount (left rotate the byte array by this).</li>
+          <li><strong>key[2]</strong>: additive offset applied to every byte (mod 256).</li>
+          <li><strong>key[3]</strong>: reverse flag (odd=reverse array, even=no).</li>
+          <li><strong>key[4]</strong>: checksum seed used when computing final checksum byte.</li>
+          <li><strong>key[5]</strong>: part of the SHA-256 seed that deterministically generates a 256-byte permutation used as a substitution table.</li>
+        </ol>
+      </div>
+    </details>
+
+    <hr />
+    <div class="muted small">Notes: This implementation mirrors the Python demo. It base64-encodes plaintext first (so arbitrary UTF-8 is supported), then performs transforms and outputs hex. If decryption fails you'll see an alert that checksum/base64 failed.</div>
+  </div>
+
+  <footer>Educational demo — not cryptographically secure</footer>
+
+  <script>
+  // --- utilities ---
+  function strToUint8(s){ return new TextEncoder().encode(s); }
+  function uint8ToStr(u8){ return new TextDecoder().decode(new Uint8Array(u8)); }
+
+  function bytesToHex(bytes){ return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+  function hexToBytes(hex){ if(hex.length%2===1) throw 'Invalid hex'; var out=new Uint8Array(hex.length/2); for(var i=0;i<out.length;i++) out[i]=parseInt(hex.substr(i*2,2),16); return out; }
+
+  function base64FromBytes(bytes){ // returns base64 string from Uint8Array
+    var chunkSize = 0x8000; // arbitrary large chunk to avoid call stack issues
+    var chunks = [];
+    for (var i=0; i<bytes.length; i+=chunkSize){
+      chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i+chunkSize)));
+    }
+    return btoa(chunks.join(''));
+  }
+  function bytesFromBase64(b64){ var bin = atob(b64); var arr = new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return arr; }
+
+  function utf8ToBase64(str){ return base64FromBytes(strToUint8(str)); }
+  function base64ToUtf8(b64){ return uint8ToStr(bytesFromBase64(b64)); }
+
+  // SHA-256 (built-in web crypto) -> returns Promise of ArrayBuffer
+  async function sha256(buf){ const hash = await crypto.subtle.digest('SHA-256', buf); return new Uint8Array(hash); }
+
+  // seeded PRNG (xorshift64*) using seed from sha256 first 8 bytes
+  function makeSeededRandom(seedHighLow){ // seedHighLow: BigInt
+    var state = BigInt(seedHighLow) & ((BigInt(1)<<BigInt(64)) - BigInt(1));
+    function next(){
+      // xorshift64*
+      state ^= state >> BigInt(12);
+      state ^= state << BigInt(25);
+      state ^= state >> BigInt(27);
+      var res = (state * BigInt(2685821657736338717)) & ((BigInt(1)<<BigInt(64))-BigInt(1));
+      return Number(res % BigInt(0xFFFFFFFF)) / 0xFFFFFFFF;
+    }
+    return { next };
+  }
+
+  async function makePermutation(seedInt){ // seedInt: BigInt
+    var rng = makeSeededRandom(seedInt);
+    var perm = new Uint8Array(256);
+    for(var i=0;i<256;i++) perm[i]=i;
+    // Fisher-Yates shuffle with seeded RNG
+    for(var i=255;i>0;i--){
+      var j = Math.floor(rng.next()*(i+1));
+      var tmp = perm[i]; perm[i]=perm[j]; perm[j]=tmp;
+    }
+    var inv = new Uint8Array(256);
+    for(var i=0;i<256;i++) inv[perm[i]] = i;
+    return {perm, inv};
+  }
+
+  function rotateLeft(arr, r){ if(arr.length===0) return arr; r = r % arr.length; return arr.slice(r).concat(arr.slice(0,r)); }
+  function rotateRight(arr, r){ if(arr.length===0) return arr; r = r % arr.length; return arr.slice(-r).concat(arr.slice(0,-r)); }
+
+  function checksumByte(arr, chk_seed){ let s=0; for(let i=0;i<arr.length;i++) s=(s+arr[i])&0xFF; return ((s ^ chk_seed) & 0xFF); }
+
+  // derive params from key (sync)
+  function deriveParamsSync(key){ // key is string length 6
+    var a = key.charCodeAt(0) & 0xFF;
+    var r_raw = key.charCodeAt(1) & 0xFF;
+    var o = key.charCodeAt(2) & 0xFF;
+    var rev_flag = (key.charCodeAt(3) & 1) === 1;
+    var chk_seed = key.charCodeAt(4) & 0xFF;
+    return {a,r_raw,o,rev_flag,chk_seed};
+  }
+
+  async function deriveSeedInt(key){ // returns BigInt
+    const h = await sha256(new TextEncoder().encode(key));
+    // take first 8 bytes as big-endian
+    let v = BigInt(0);
+    for(let i=0;i<8;i++){
+      v = (v<<BigInt(8)) + BigInt(h[i]);
+    }
+    return v;
+  }
+
+  // --- core encrypt/decrypt ---
+  async function encrypt(plaintext, key){
+    if(typeof key !== 'string' || key.length !== 6) throw 'Key must be exactly 6 chars';
+    const {a,r_raw,o,rev_flag,chk_seed} = deriveParamsSync(key);
+    const seedInt = await deriveSeedInt(key);
+    const {perm, inv} = await makePermutation(seedInt);
+
+    // 1) base64-encode plaintext
+    const b64 = utf8ToBase64(plaintext);
+    const b64bytes = bytesFromBase64(b64);
+    let arr = Array.from(b64bytes);
+
+    // 2) XOR
+    arr = arr.map(x => x ^ a);
+    // 3) rotate left
+    arr = rotateLeft(arr, r_raw);
+    // 4) permutation substitution
+    arr = arr.map(x => perm[x]);
+    // 5) add offset
+    arr = arr.map(x => (x + o) & 0xFF);
+    // 6) maybe reverse
+    if(rev_flag) arr = arr.reverse();
+    // 7) checksum
+    const chk = checksumByte(arr, chk_seed);
+    arr.push(chk);
+    return bytesToHex(arr);
+  }
+
+  async function decrypt(hexCipher, key){
+    if(typeof key !== 'string' || key.length !== 6) throw 'Key must be exactly 6 chars';
+    let data;
+    try{ data = Array.from(hexToBytes(hexCipher)); } catch(e){ throw 'Invalid hex'; }
+    if(data.length === 0) return '';
+    const {a,r_raw,o,rev_flag,chk_seed} = deriveParamsSync(key);
+    const seedInt = await deriveSeedInt(key);
+    const {perm, inv} = await makePermutation(seedInt);
+
+    // last byte is checksum
+    const chk = data.pop();
+    const expected = checksumByte(data, chk_seed);
+    if(chk !== expected) throw 'Checksum mismatch — wrong key or tampered data.';
+
+    // reverse operations
+    if(rev_flag) data = data.reverse();
+    data = data.map(x => (x - o) & 0xFF);
+    data = data.map(x => inv[x]);
+    data = rotateRight(data, r_raw);
+    data = data.map(x => x ^ a);
+    // now base64 bytes -> string
+    const b64 = base64FromBytes(new Uint8Array(data));
+    try{
+      return base64ToUtf8(b64);
+    }catch(e){ throw 'Base64 decode failed — wrong key or corrupt data.'; }
+  }
+
+  // --- UI bindings ---
+  document.getElementById('encryptBtn').addEventListener('click', async ()=>{
+    const key = document.getElementById('key').value;
+    const msg = document.getElementById('plaintext').value;
+    try{
+      const c = await encrypt(msg, key);
+      document.getElementById('ciphertext').value = c;
+      alert('Encrypted — cipher placed in the box below');
+    }catch(e){ alert('Encrypt error: '+e); }
+  });
+
+  document.getElementById('decryptBtn').addEventListener('click', async ()=>{
+    const key = document.getElementById('key').value;
+    const hex = document.getElementById('ciphertext').value.trim();
+    try{
+      const p = await decrypt(hex, key);
+      document.getElementById('plaintext').value = p;
+      alert('Decrypted — plaintext updated');
+    }catch(e){ alert('Decrypt error: '+e); }
+  });
+
+  document.getElementById('copyCipher').addEventListener('click', ()=>{ const t=document.getElementById('ciphertext'); t.select(); document.execCommand('copy'); alert('Cipher copied to clipboard'); });
+  document.getElementById('clearAll').addEventListener('click', ()=>{ document.getElementById('plaintext').value=''; document.getElementById('ciphertext').value=''; });
+
+  </script>
+</body>
+</html>
