@@ -11,8 +11,8 @@
     p.lead{margin:0 0 14px;color:#444}
     label{display:block;font-size:13px;margin-top:10px}
     input[type=text], textarea, select{width:100%;padding:10px;border-radius:8px;border:1px solid #e3e6ee;font-size:14px}
-    .row{display:flex;gap:10px}
-    .col{flex:1}
+    .row{display:flex;gap:10px;flex-wrap: wrap;}
+    .col{flex:1; min-width: 120px;}
     button{padding:10px 12px;border-radius:8px;border:0;background:#6b46c1;color:white;font-weight:600;cursor:pointer}
     button.secondary{background:#2d3748}
     pre{background:#0f1724;color:#f8fafc;padding:10px;border-radius:8px;overflow:auto}
@@ -25,10 +25,13 @@
 <body>
   <div class="card">
     <h1>Encry - Decry</h1>
-    <p class="lead">This page that I created encrypts your code, although beware: <strong>Not secure</strong> it's onmy for simple stuff <strong>Do not use this page for real security!</strong>.</p>
+    <p class="lead">This page that I created encrypts your code, although beware: <strong>Not secure</strong> it's only for simple stuff <strong>Do not use this page for real security!</strong>.</p>
 
     <label>Key (exactly 6 characters)</label>
-    <input id="key" type="text" value="@A3#z!" maxlength="6" />
+    <div class="row" style="align-items:center;">
+      <input id="key" type="text" value="@A3#z!" maxlength="6" style="flex:1; min-width: 120px;" />
+      <button id="generateKey" style="flex:0 0 160px; margin-left: 10px;">Generate Random Key</button>
+    </div>
     <div class="muted">Each character controls part of the transform (XOR, rotation, offset, reverse flag, checksum seed, permutation seed).</div>
 
     <label>Plaintext</label>
@@ -205,10 +208,24 @@
     }catch(e){ throw 'Base64 decode failed — wrong key or corrupt data.'; }
   }
 
+  // --- random key generation ---
+  function generateRandomKey(length = 6) {
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{};:,.<>?";
+    let key = "";
+    for(let i=0; i<length; i++) {
+      key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return key;
+  }
+
   // --- UI bindings ---
   document.getElementById('encryptBtn').addEventListener('click', async ()=>{
     const key = document.getElementById('key').value;
     const msg = document.getElementById('plaintext').value;
+    if(key.length !== 6){
+      alert('Key must be exactly 6 characters!');
+      return;
+    }
     try{
       const c = await encrypt(msg, key);
       document.getElementById('ciphertext').value = c;
@@ -219,6 +236,10 @@
   document.getElementById('decryptBtn').addEventListener('click', async ()=>{
     const key = document.getElementById('key').value;
     const hex = document.getElementById('ciphertext').value.trim();
+    if(key.length !== 6){
+      alert('Key must be exactly 6 characters!');
+      return;
+    }
     try{
       const p = await decrypt(hex, key);
       document.getElementById('plaintext').value = p;
@@ -226,8 +247,24 @@
     }catch(e){ alert('Decrypt error: '+e); }
   });
 
-  document.getElementById('copyCipher').addEventListener('click', ()=>{ const t=document.getElementById('ciphertext'); t.select(); document.execCommand('copy'); alert('Cipher copied to clipboard'); });
-  document.getElementById('clearAll').addEventListener('click', ()=>{ document.getElementById('plaintext').value=''; document.getElementById('ciphertext').value=''; });
+  document.getElementById('copyCipher').addEventListener('click', ()=>{
+    const t=document.getElementById('ciphertext');
+    t.select();
+    document.execCommand('copy');
+    alert('Cipher copied to clipboard');
+  });
+
+  document.getElementById('clearAll').addEventListener('click', ()=>{
+    document.getElementById('plaintext').value='';
+    document.getElementById('ciphertext').value='';
+  });
+
+  // New button for generating random key
+  document.getElementById('generateKey').addEventListener('click', ()=>{
+    const key = generateRandomKey();
+    document.getElementById('key').value = key;
+    alert('Generated random key: ' + key);
+  });
 
   </script>
 </body>
