@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Custom 6‑Char Cipher — Demo</title>
+  <title>Custom 6‑Char Cipher</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;margin:18px;background:#f7f8fb;color:#111}
     .card{background:white;border-radius:12px;box-shadow:0 6px 20px rgba(20,30,60,0.08);padding:18px;max-width:980px;margin:12px auto}
@@ -24,15 +24,16 @@
 </head>
 <body>
   <div class="card">
-    <h1>Custom 6‑Character Cipher — Web Demo</h1>
-    <p class="lead">This page implements the same reversible educational cipher from the Python demo. <strong>Not secure</strong> — for learning, puzzles, or games only.</p>
+    <h1>Encry - Decry</h1>
+    <p class="lead">This page that I created encrypts your code, although beware: <strong>Not secure</strong> it's onmy for simple stuff <strong>Do not use this page for real security!</strong>.</p>
 
     <label>Key (exactly 6 characters)</label>
     <input id="key" type="text" value="@A3#z!" maxlength="6" />
     <div class="muted">Each character controls part of the transform (XOR, rotation, offset, reverse flag, checksum seed, permutation seed).</div>
 
     <label>Plaintext</label>
-    <textarea id="plaintext" rows="4">Hello Julie! This is my secret message :)</textarea>
+    <textarea id="plaintext" rows="4">Hello there, this is a secret message :)</textarea>
+    <strong>Encryptions will appear down below and decryptions above!</strong>
 
     <div style="margin-top:12px" class="row">
       <div class="col">
@@ -70,7 +71,7 @@
     <div class="muted small">Notes: This implementation mirrors the Python demo. It base64-encodes plaintext first (so arbitrary UTF-8 is supported), then performs transforms and outputs hex. If decryption fails you'll see an alert that checksum/base64 failed.</div>
   </div>
 
-  <footer>Educational demo — not cryptographically secure</footer>
+  <footer>Educational project and hobby, not cryptographically secure</footer>
 
   <script>
   // --- utilities ---
